@@ -1,0 +1,191 @@
+---
+title: "MY470 - Exercise Week 9 - More R Programming"
+author: "Pablo Barbera"
+---
+
+### 1. Working with matrix and data.frame objects
+
+a.  Return a `data.frame` that is a subset of the built-in `iris` dataset (see `?iris`) that contains only the "virginica" species.  What is the mean of the petal width of this subset?
+
+```{r}
+data(iris)
+iris_subset <- iris[iris$Species=="virginica",]
+mean(iris_subset$Petal.Width)
+```
+
+**The mean of the petal width of the virginica species is approximately 2 centimeters.**
+
+b.  How could the `iris` dataset be converted into a `matrix`?  Describe what would need to be done to make this possible.
+
+```{r}
+iris_matrix <- as.matrix(iris)
+iris_matrix <- as.matrix(Filter(is.numeric, iris))
+```
+
+**There are two ways to convert it; one with all the columns and another one only with numeric columns. Note that the steps required to make this possible imply converting all columns to the same data type. In other words, we lose the flexibility of the data frame.**
+
+c.  Use `aggregate` to compute the medians of all four numeric variables across each possible value of `Species`. Can you do this with a single line of code? (You can use `dplyr` instead if you prefer.)
+
+```{r}
+# one way
+aggregate(cbind(Sepal.Length, Sepal.Width, Petal.Length, Petal.Width) ~ Species, data=iris, FUN=median)
+# a better way?
+aggregate(. ~ Species, data=iris, FUN=median)
+
+# using dplyr
+library(dplyr)
+iris %>% group_by(Species) %>% 
+  summarize(med_sep_len = median(Sepal.Length),
+            med_sep_wid = median(Sepal.Width),
+            med_pet_len = median(Petal.Length),
+            med_pet_wid = median(Petal.Width))
+```
+
+d.  Using the base R `plot()`, produce a boxplot of the distribution of `Sepal.Length` by `Species`.  (You are welcome to use **ggplot2** if you prefer.)
+
+```{r}
+# using base R
+plot(x=iris$Species, y=iris$Sepal.Length,
+     xlab="Flower species",
+     ylab="Sepal length")
+# using ggplot2
+library(ggplot2)
+ggplot(iris, aes(x=Species, y=Sepal.Length)) +
+  geom_boxplot() +
+  scale_x_discrete("Flower species") +
+  scale_y_continuous("Sepal Length") +
+  ggtitle("Distribution of sepal length by flower species")
+```
+
+e. Use `ggplot2` to create a plot with multiple facets, where each facet shows a scatterplot comparing `Sepal.Length` and `Sepal.Width` for a different value of `Species`.
+
+```{r}
+library(ggplot2)
+ggplot(iris, aes(x=Sepal.Length, y=Sepal.Width)) +
+  geom_point() +
+  facet_wrap(~Species) +
+  scale_x_continuous("Sepal Length") +
+  scale_y_continuous("Sepal Width") +
+  ggtitle("Sepal length and width are correlated within flower species")
+```
+
+### 2. Working with functions
+
+#### a.  Hello World
+
+Create a function `hello()` to greet you using a variant of the "Hello, World" exercise. This will take an input name, and an argument, and return a greeting.
+
+How the function should work:
+
+*  It should have arguments `firstname`, `lastname` and an optional argument `title` which defaults to `Ms.`.
+*  When both first and last names are given, it should return "Hello, TITLE FIRSTNAME LASTNAME"; when last name is missing, it should return "Hey, FIRSTNAME!"
+*  This will not require a print argument, but simply returning this value as a character.  
+*  To build up a character from elements, see `?paste`.
+*  To check if argument is missing, use `missing()`. You can also default it to `NULL`.
+*  There should be spaces between all elements of the output except just before the closing punctuation mark.
+
+```{r}
+hello <- function(firstname, lastname, title="Ms."){
+  if (!missing(firstname) & !missing(lastname)){
+    response <- paste("Hello,", toupper(title), toupper(firstname), toupper(lastname))
+  }
+  if (!missing(firstname) & missing(lastname)){
+    response <- paste("Hey, ", toupper(firstname), "!", sep="")
+  }  
+  return(response)
+}
+hello("Pablo", "Barbera", "Mr.")
+hello("Pablo")
+```
+
+### 3. k-means clustering revisited
+
+In week 4, you learned how to program a k-means clustering algorithms from scratch. The goal of this question is to replicate that exercise with R.
+
+a. First, read the data into memory
+
+```{r}
+df <- read.csv("Wholesale customers data.csv", stringsAsFactors=FALSE)
+```
+
+b. Write a function called `get_distance` that computes the Euclidean distance between two points on a multidimensional space.
+
+```{r}
+get_distance <- function(x, y){
+  return(sqrt(sum((x-y)^2)))
+}
+```
+
+c. Now write a function called `get_centroid` that computes the centroid of a group of points, where the centroid is defined as the average on each dimension.
+
+```{r}
+get_centroid <- function(points){
+  return(colMeans(points))
+}
+```
+
+d. Finally, write a function called `kmeans` that implements the entire algorithm, including the two functions above. It should take two arguments: the data used to find the clusters and the desired number of clusters. When you wrote this function in python, you had to run it for 100 iterations. Here, we'll use a standard stopping rule: we will assume the algorithm has converge (and thus you should stop the function) whenever the cluster assignments do not change from one iteration to the next. (If you're having convergence issue, you can increase this threshold to only 2-3 observations changing.)
+
+```{r}
+kmeans <- function(data, K){
+  
+  # parameters
+  n <- nrow(data)
+  clusters <- rep(0, n)
+  # initialize centroids taking random sample of K points from df
+  centroids <- data[sample(1:n, K),]
+
+  # initial assignment of clusters
+  new_clusters <- rep(NA, n)
+  for (i in 1:n){
+    distances <- apply(centroids, 1, get_distance, data[i,])
+    new_clusters[i] <- which.min(distances)
+  }
+  
+  # checking convergence
+  diff <- sum(abs(new_clusters - clusters))
+  iter <- 1
+  message("Iteration ", iter, ' -- Changes in cluster assigments: ', diff)
+  
+  # if different, continue...
+  while (diff > 0){
+    # new assignment of clusters
+    clusters <- new_clusters
+
+    # update centroids
+    for (k in 1:K){
+      centroids[k,] <- get_centroid(data[clusters==k,])
+    }
+    
+    # update assignment of clusters
+    new_clusters <- rep(NA, n)
+    for (i in 1:n){
+      distances <- apply(centroids, 1, get_distance, data[i,])
+      new_clusters[i] <- which.min(distances)
+    }
+    
+    # checking convergence
+    diff <- sum(abs(new_clusters - clusters))
+    iter <- iter + 1
+    message("Iteration ", iter, ' -- Changes in cluster assigments: ', diff)
+
+  }
+  
+  # output
+  return(list(
+    clusters = new_clusters,
+    centroids = centroids
+  ))
+  
+}
+```
+
+e. Test this algorithm with the data you read earlier. Do you find the same results as when you run it with python? What parts of the algorithm were more difficult to implement?
+
+```{r}
+kmeans(data=df, K=5)
+```
+
+**Results should be identical as when run with python. Algorithm should be easier to implement if you use R's built-in functions, such as `which.min` or `apply`, as well as R's native data types, such as matrices or data frames. If you were writing the algorithm at a lower level, it may be more difficult because lists are harder to work with in R.**
+
+
